@@ -1,0 +1,140 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidNewProfile() {
+      return request.resource.data.keys().hasAll([
+          'displayName',
+          'email',
+          'photoURL',
+          'createdAt',
+          'updatedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'displayName',
+          'email',
+          'photoURL',
+          'createdAt',
+          'updatedAt'
+        ])
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() >= 2
+        && request.resource.data.displayName.size() <= 50
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.photoURL == null
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    match /users/{uid} {
+      allow create: if isOwner(uid) && isValidNewProfile();
+      allow read: if isOwner(uid);
+      allow update, delete: if false;
+    }
+
+    function isValidNewComment() {
+      return request.resource.data.keys().hasAll([
+          'userId',
+          'userName',
+          'userPhotoURL',
+          'content',
+          'parentId',
+          'rootId',
+          'createdAt',
+          'updatedAt',
+          'isDeleted',
+          'deletedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'userId',
+          'userName',
+          'userPhotoURL',
+          'content',
+          'parentId',
+          'rootId',
+          'createdAt',
+          'updatedAt',
+          'isDeleted',
+          'deletedAt'
+        ])
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.userName is string
+        && request.resource.data.userName.size() >= 1
+        && request.resource.data.userName.size() <= 50
+        && (request.resource.data.userPhotoURL == null
+          || (request.resource.data.userPhotoURL is string
+            && request.resource.data.userPhotoURL.size() <= 2048))
+        && request.resource.data.content is string
+        && request.resource.data.content.size() >= 1
+        && request.resource.data.content.size() <= 2000
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.isDeleted == false
+        && request.resource.data.deletedAt == null;
+    }
+
+    function isValidRootComment(commentId) {
+      return request.resource.data.parentId == null
+        && request.resource.data.rootId == commentId;
+    }
+
+    function parentPath() {
+      return /databases/$(database)/documents/comments/$(request.resource.data.parentId);
+    }
+
+    function parentComment() {
+      return get(parentPath());
+    }
+
+    function isValidReply(commentId) {
+      return request.resource.data.parentId is string
+        && request.resource.data.rootId is string
+        && request.resource.data.parentId != commentId
+        && exists(parentPath())
+        && parentComment().data.isDeleted == false
+        && (
+          (parentComment().data.parentId == null
+            && request.resource.data.rootId == request.resource.data.parentId)
+          ||
+          (parentComment().data.parentId is string
+            && parentComment().data.rootId is string
+            && request.resource.data.rootId == parentComment().data.rootId)
+        );
+    }
+
+    function isValidSoftDelete() {
+      return isOwner(resource.data.userId)
+        && resource.data.isDeleted == false
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'content',
+          'isDeleted',
+          'deletedAt',
+          'updatedAt'
+        ])
+        && request.resource.data.content == ''
+        && request.resource.data.isDeleted == true
+        && request.resource.data.deletedAt == request.time
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    match /comments/{commentId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && isValidNewComment()
+        && (isValidRootComment(commentId) || isValidReply(commentId));
+      allow update: if isValidSoftDelete();
+      allow delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
