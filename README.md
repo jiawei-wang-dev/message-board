@@ -127,7 +127,7 @@ Hosting: GitHub → Cloudflare Pages
 
 ## 本地运行
 
-建议使用 Node.js 20.19+（或 22.12+）和 npm 10+。
+建议使用 Node.js 24.12+ 和 npm 10+。
 
 ```bash
 git clone https://github.com/jiawei-wang-dev/message-board.git
@@ -176,3 +176,5 @@ Backend services: Firebase Authentication + Cloud Firestore
 ```
 
 Cloudflare Pages 负责静态站点和 SPA 路由回退，Firebase 提供认证、数据库与 Security Rules。生产版本可在 [https://message-board-8bi.pages.dev](https://message-board-8bi.pages.dev) 访问。
+
+部署 Firebase Security Rules 或索引前，请先运行 `firebase use --add`，选择自己的 Firebase 项目并建立本地项目别名。
