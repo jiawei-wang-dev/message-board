@@ -2,7 +2,10 @@
 
 一个面向真实部署的中文社区留言板。项目使用 Vue 3、Firebase Authentication 与 Cloud Firestore，支持按需加载的无限层级回复、游标分页和保持讨论树完整的软删除。
 
-生产站点：[message-board-8bi.pages.dev](https://message-board-8bi.pages.dev)
+## Live Demo
+
+- Production: [https://message-board-8bi.pages.dev](https://message-board-8bi.pages.dev)
+- Repository: [https://github.com/jiawei-wang-dev/message-board](https://github.com/jiawei-wang-dev/message-board)
 
 ## 截图
 
