@@ -2,6 +2,8 @@
 
 一个面向真实部署的中文社区留言板。项目使用 Vue 3、Firebase Authentication 与 Cloud Firestore，支持按需加载的无限层级回复、游标分页和保持讨论树完整的软删除。
 
+生产站点：[message-board-8bi.pages.dev](https://message-board-8bi.pages.dev)
+
 ## 截图
 
 > 截图尚未加入仓库。建议在部署后补充桌面端留言板、移动端深层回复和登录页截图。
