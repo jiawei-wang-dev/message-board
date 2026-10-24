@@ -1,94 +1,142 @@
-# 留言板
+# 留言板 Message Board
 
-一个面向真实部署的中文社区留言板。项目使用 Vue 3、Firebase Authentication 与 Cloud Firestore，支持按需加载的无限层级回复、游标分页和保持讨论树完整的软删除。
+这是我开发的一个基于 Vue 3 和 Firebase 的中文社区留言板。我希望它不只是完成注册、登录和发布留言这些基础功能，也能承载真实社区中常见的多层讨论，因此重点实现了无限层级回复、按需加载、游标分页和软删除机制。
 
-## Live Demo
+这个项目展示了我对前端组件设计、Firestore 数据建模、访问控制、查询性能和生产部署的完整实践。
 
-- Production: [https://message-board-8bi.pages.dev](https://message-board-8bi.pages.dev)
-- Repository: [https://github.com/jiawei-wang-dev/message-board](https://github.com/jiawei-wang-dev/message-board)
+## 在线体验
 
-## 截图
+- **Live Demo：** [https://message-board-8bi.pages.dev](https://message-board-8bi.pages.dev)
+- **GitHub Repository：** [https://github.com/jiawei-wang-dev/message-board](https://github.com/jiawei-wang-dev/message-board)
 
-> 截图尚未加入仓库。建议在部署后补充桌面端留言板、移动端深层回复和登录页截图。
+## 项目截图
 
-## 功能
+### 首页
 
-- 邮箱/密码注册、登录、持久会话和受保护路由
-- 根留言按最新或最早排序，并使用游标分页
-- 任意深度回复；每个分支独立懒加载和分页
-- 作者专属软删除；已删除节点继续承载已有回复
-- 中文错误提示、加载骨架、空状态、Toast 和确认对话框
-- 键盘操作、焦点管理、语义化状态通知及响应式深层讨论布局
-- Firestore Rules 与 Emulator 自动化安全测试
+![留言板首页](docs/images/home.png)
 
-## 技术栈
+### 留言板
 
-- Vue 3、Vite、Vue Router
-- Tailwind CSS 4（Vite 插件）
-- Firebase Authentication、Cloud Firestore
-- Vitest、Firebase Rules Unit Testing、Firebase Emulator Suite
-- Cloudflare Pages
+![留言板讨论区](docs/images/board.png)
 
-项目刻意不使用 Pinia、UI 组件库或 Cloud Functions。当前业务可以由 Firebase Auth、Firestore 客户端 SDK 与 Security Rules 安全完成；只有未来加入管理员审核、永久删除子树或后台维护任务时，才需要可信服务端逻辑。
+### 多层回复
+
+![无限层级回复效果](docs/images/nested-replies.png)
+
+### 登录与移动端
+
+<p>
+  <img src="docs/images/login.png" alt="登录页面" width="62%">
+  <img src="docs/images/mobile.png" alt="390 像素移动端留言板" width="27%">
+</p>
+
+## 项目概览
+
+前端使用 **Vue 3、Vite、Vue Router 和 Tailwind CSS**，身份认证与数据存储分别由 **Firebase Authentication** 和 **Cloud Firestore** 提供，生产站点部署在 **Cloudflare Pages**。
+
+我没有引入大型状态管理库、UI 框架或传统后端框架。当前规模下，Vue Composables 足以管理共享状态，而 Firebase Authentication、Firestore 客户端 SDK 与 Security Rules 已能完成业务所需的身份、数据和安全边界；这样既保持了代码清晰，也避免了不必要的复杂度。
+
+## 核心功能
+
+- **完整认证流程：** 支持邮箱注册、登录、退出、刷新后保持会话，以及未登录访问留言板时的路由保护。
+- **留言浏览与发布：** 登录用户可以发布根留言，并按最新或最早时间排序。
+- **无限层级回复：** 任意留言都可以继续回复，前端使用递归组件呈现讨论树。
+- **按需加载：** 根留言使用游标分页；回复仅在展开分支时读取，每个回复分支也拥有独立分页。
+- **安全软删除：** 作者只能删除自己的留言。删除后显示“该留言已删除”，已有子回复仍然保留。
+- **完善的界面状态：** 包含加载骨架、空状态、Toast、删除确认对话框和友好的中文错误提示。
+- **响应式与 Accessibility：** 深层回复会在窄屏减少缩进，并提供语义化结构、键盘操作、可见焦点和状态播报。
+- **生产级安全与验证：** 使用 Firestore Security Rules、自动化测试和 Emulator 测试保护数据，前端由 Cloudflare Pages 持续部署。
+
+## 我在这个项目中的主要设计
+
+### 无限层级回复
+
+所有根留言和回复都保存在同一个 `comments/{commentId}` 集合中，通过 `parentId` 和 `rootId` 表达关系，而不是创建无限嵌套的 Firestore 子集合。
+
+```text
+A（rootId: A, parentId: null）
+├── B（rootId: A, parentId: A）
+│   └── D（rootId: A, parentId: B）
+└── C（rootId: A, parentId: A）
+```
+
+这种扁平数据结构使任意节点的直属回复都能用同一种查询方式读取。界面由 `CommentItem.vue` 递归渲染，因此讨论深度不受组件结构限制。
+
+### Lazy Loading 与 Cursor Pagination
+
+我没有在进入留言板时加载整棵讨论树：
+
+- 根留言每页读取 10 条；
+- 每个父留言的回复每页读取 5 条；
+- Firestore 查询使用 `limit` 与文档快照 `startAfter` 继续下一页。
+
+只有用户展开某个分支时，应用才查询该节点的直属回复。这样能控制 Firestore reads，避免活跃讨论不断增长后一次性传输大量无关数据，同时让“加载更多”保持稳定且可预测。
+
+### 软删除
+
+我选择软删除来保护讨论上下文，而不是直接移除节点：
+
+```text
+[该留言已删除]
+└── 原有回复仍然存在
+```
+
+删除操作只会清空正文并记录删除状态，作者、父节点、根节点和创建时间保持不变。即使父留言被删除，下面的讨论仍然可以被理解和浏览。
+
+### 安全边界
+
+安全由 **Firebase Authentication + Firestore Security Rules** 共同保证，而不是只依赖前端按钮是否可见。Rules 会验证身份、字段白名单和父子关系，确保用户不能冒充其他作者、只能软删除自己的留言、不能恢复已删除节点，也不能执行物理删除；无效的 `parentId` / `rootId` 关系同样会被拒绝。
 
 ## 架构
 
 ```text
-src/
-  components/       可复用界面与递归 CommentItem
-  composables/       全局认证状态和 Toast
-  firebase/          Firebase 初始化与 Emulator 连接
-  router/            路由、认证守卫和页面标题
-  services/          认证与留言数据访问
-  utils/             可独立测试的校验、排序和导航辅助函数
-  views/             首页、留言板、认证和 404 页面
-tests/
-  unit/              纯函数测试
-  rules/             Firestore Security Rules 测试
-```
+Browser
+│
+├─ Vue 3
+│  ├─ Vue Router
+│  ├─ Recursive CommentItem
+│  ├─ Services / Composables
+│  └─ Tailwind responsive UI
+│
+├─ Firebase Authentication
+│
+└─ Cloud Firestore
+   ├─ users
+   └─ comments
 
-认证初始化只注册一个 `onAuthStateChanged` 监听器。受保护页面会等待首次认证状态解析，未登录用户跳转到 `/login`，登录后只接受经过清理的站内重定向地址。
+Hosting: GitHub → Cloudflare Pages
+```
 
 ## Firestore 数据模型
 
-### `users/{uid}`
+`users/{uid}` 保存用户公开资料；`comments/{commentId}` 保存所有根留言和回复。核心留言结构如下：
 
-```text
-displayName, email, photoURL, createdAt, updatedAt
+```js
+{
+  userId: "作者 UID",
+  userName: "显示名称",
+  content: "留言内容",
+  parentId: null,        // 根留言为 null；回复指向直属父留言
+  rootId: "commentId",  // 整棵讨论树的根留言 ID
+  createdAt: Timestamp,
+  isDeleted: false
+}
 ```
 
-用户只能创建和读取自己的资料；客户端不能更新或删除资料。
-
-### `comments/{commentId}`
-
-```text
-userId, userName, userPhotoURL, content,
-parentId, rootId,
-createdAt, updatedAt,
-isDeleted, deletedAt
-```
-
-所有节点位于同一个扁平集合中，不使用无限嵌套子集合。根留言的 `parentId` 为 `null`，`rootId` 等于自身文档 ID。回复的 `parentId` 指向直属父节点，`rootId` 继承整棵树的根节点 ID。`CommentItem.vue` 递归渲染节点，但只在用户展开分支时查询该节点的直属子项，因此深度不受数据结构限制，也不会一次加载整棵树。
-
-根留言每页 10 条，可按 `createdAt` 升序或降序读取；回复每个父节点每页 5 条，固定升序。所有下一页查询都使用完整文档快照作为 `startAfter` 游标，并在合并时按 ID 去重。
-
-删除采用不可逆的软删除：作者可将 `content` 清空并写入 `isDeleted`、`deletedAt` 和 `updatedAt`，但不能修改作者、父节点、根节点或创建时间。物理删除、他人删除、恢复已删除节点以及回复已删除父节点均由 Rules 拒绝。
+根留言的 `parentId` 为 `null`，`rootId` 等于自身文档 ID；回复的 `parentId` 指向直属父节点，`rootId` 始终继承根节点 ID。针对根留言排序和回复查询的复合索引记录在 `firestore.indexes.json` 中。
 
 ## 本地运行
 
-要求 Node.js 20.19+ 或 22.12+，以及 npm 10+。
+建议使用 Node.js 20.19+（或 22.12+）和 npm 10+。
 
 ```bash
+git clone https://github.com/jiawei-wang-dev/message-board.git
+cd message-board
 npm install
 cp .env.example .env.local
-npm run dev
 ```
 
-Vite 通常在 `http://localhost:5173` 启动。没有 Firebase 配置时，公开页面仍可构建和浏览，但注册、登录和留言功能不可用。
-
-## 环境变量
-
-从 Firebase Console 的“项目设置 → 您的应用 → Web 应用”复制公开 Web 配置：
+在 Firebase Console 注册 Web App，并从“项目设置 → 您的应用”取得公开 Web 配置，然后填写 `.env.local`：
 
 ```dotenv
 VITE_FIREBASE_API_KEY=
@@ -99,82 +147,32 @@ VITE_FIREBASE_MESSAGING_SENDER_ID=
 VITE_FIREBASE_APP_ID=
 ```
 
-这些是 Firebase Web 客户端标识，不是授权边界；数据安全由 Authentication 和 Firestore Rules 提供。绝不要在 `VITE_` 变量中放置服务账号私钥或其他服务器密钥，也不要提交 `.env.local`。
-
-本地 Emulator 可另外配置：
-
-```dotenv
-VITE_USE_FIREBASE_EMULATORS=true
-VITE_FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
-VITE_FIRESTORE_EMULATOR_HOST=127.0.0.1:8080
-```
-
-应用只允许开发构建连接 Emulator；生产构建即使误设开关也不会连接本机地址。
-
-## Firebase 项目设置
-
-1. 在 Firebase Console 创建或选择项目，并注册一个 Web 应用。
-2. 在 Authentication 的登录方式中启用“电子邮件/密码”。
-3. 创建 Cloud Firestore 数据库，并选择与主要用户接近的区域。
-4. 安装并登录 Firebase CLI：`firebase login`。
-5. 关联目标项目：`firebase use --add`（不要提交个人 `.firebaserc`，除非团队有意共享）。
-6. 部署规则：`firebase deploy --only firestore:rules`。
-7. 部署索引：`firebase deploy --only firestore:indexes`。
-8. 把 Web 应用配置写入本地或 Cloudflare Pages 环境变量。
-
-`firestore.indexes.json` 包含 `parentId + createdAt ASC` 和 `parentId + createdAt DESC` 两个复合索引，分别服务回复/最早排序与最新排序。
-
-## Emulator 与测试
-
-启动完整本地服务：
+不要在这里放置服务账号私钥，也不要提交 `.env.local`。完成配置后启动开发服务器：
 
 ```bash
-npx firebase emulators:start --only auth,firestore
+npm run dev
 ```
 
-安全规则测试脚本会自行启动并关闭独立的 Firestore Emulator，使用 `demo-` 项目 ID，不会连接真实项目：
+## 测试
+
+项目包含 15 个单元测试，以及覆盖认证、作者身份、不可变字段、父子关系、软删除和物理删除限制的 Firestore Security Rules 测试。
 
 ```bash
-npm run test          # 校验、时间、合并去重和重定向单元测试
-npm run test:rules    # Firestore Rules 允许/拒绝场景
-npm run test:all      # 依次执行全部测试
+npm run test        # Vitest 单元测试
+npm run test:rules  # Firestore Rules 测试
+npm run test:all    # 运行全部测试
 ```
 
-Rules 测试每个用例前清空数据库，覆盖资料隔离、未认证写入、作者伪造、内容边界、父/根节点校验、多层回复、已删除父节点、软删除、不可变字段、恢复与物理删除。
+Rules 测试使用独立 Firebase Emulator，不会读取或修改生产数据。
 
-## 构建与预览
+## 部署
 
-```bash
-npm run build
-npm run preview
+前端通过 **GitHub → Cloudflare Pages** 部署：
+
+```text
+Build command: npm run build
+Output directory: dist
+Backend services: Firebase Authentication + Cloud Firestore
 ```
 
-生产文件输出到 `dist/`。`public/_redirects` 为 Cloudflare Pages 提供 Vue Router history 模式的 SPA 回退，`public/_headers` 添加基础浏览器安全响应头。
-
-## Cloudflare Pages 部署
-
-1. 在 Cloudflare Pages 中连接此仓库，选择 Vue/Vite 或手动配置。
-2. Build command 设置为 `npm run build`。
-3. Build output directory 设置为 `dist`。
-4. Node.js 版本使用 20.19+ 或 22.12+。
-5. 在 Production 和需要的 Preview 环境中配置上述六个 `VITE_FIREBASE_*` 变量。
-6. 不要在 Cloudflare 中设置 `VITE_USE_FIREBASE_EMULATORS=true`。
-7. 首次部署后直接访问 `/board`、`/login`、`/register` 和任意不存在路径，确认 SPA 回退正常。
-8. 将 Pages 生产域名加入 Firebase Authentication 的“已获授权的网域”。
-
-部署前应先发布 Firestore Rules 和索引；Cloudflare Pages 只托管静态前端，不会代替 Firebase 后端配置。
-
-## 安全与可访问性
-
-Firestore Rules 使用字段白名单、认证 UID、父文档存在性和不可变字段差异检查保护写入。客户端校验用于即时反馈，不替代服务端 Rules。页面包含跳至主内容链接、语义化地标、可见焦点、表单错误关联、状态/错误播报、键盘可操作按钮，以及支持 Escape、焦点限制和关闭后焦点恢复的确认对话框。移动端会降低深层回复缩进，长用户名和无空格长文本会安全换行。
-
-## npm scripts
-
-| 命令 | 用途 |
-| --- | --- |
-| `npm run dev` | 启动开发服务器 |
-| `npm run build` | 创建生产构建 |
-| `npm run preview` | 本地预览 `dist/` |
-| `npm run test` | 运行 Vitest 单元测试 |
-| `npm run test:rules` | 在 Firestore Emulator 运行 Rules 测试 |
-| `npm run test:all` | 运行全部自动化测试 |
+Cloudflare Pages 负责静态站点和 SPA 路由回退，Firebase 提供认证、数据库与 Security Rules。生产版本可在 [https://message-board-8bi.pages.dev](https://message-board-8bi.pages.dev) 访问。
